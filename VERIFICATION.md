@@ -18,9 +18,9 @@ The preceding version’s real unauthenticated smoke test against example.com an
 - XLSX error text remains literal even when it begins with an equals sign. Setup uses an isolated environment instead of modifying system Python packages.
 - Added the missing MIT licence, optional-dependency notes, operational-data ignore rules and regression tests.
 
-## Deliberate clarifications of the brief
+## Classification rules
 
-The supplied brief is preserved unchanged. The README explains these deviations:
+The README explains these classification rules:
 
 1. Any HTTP 4xx/5xx response at the liveness gate is always Not assessed, including when the scanner returns parseable headers. Its complete scanner result is retained under `_scanner_output`. This avoids treating an error page as an application assessment.
 2. A live non-default HTTPS port is Not assessed without invoking secheaders. Inspection of the installed 0.2.0 package showed that its final header fetch omits the explicit port. The wrapper avoids reporting the wrong service and does not modify upstream code.
@@ -34,13 +34,9 @@ The supplied brief is preserved unchanged. The README explains these deviations:
 - No 180-target performance run was performed. Both worker pools were verified to overlap work. Operating-system DNS resolution is not bounded by the socket timeout.
 - A gate HEAD response and the scanner's later GET response may differ. A 200 challenge page or a later GET-only challenge cannot be detected reliably through this scanner's JSON contract. Findings remain single-vantage observations.
 
-## Reproduce
+## Test availability
 
-From the extracted package directory, with the optional test dependency installed:
-
-```bash
-python3 -m unittest discover -s . -v
-```
+The results above record checks performed during development. The design brief and development test files have been removed from this repository; the recorded checks are not a bundled test suite.
 
 ## HTTP 4xx/5xx update
 

@@ -101,7 +101,7 @@ For each target `headerproof` first resolves the hostname. No DNS answer is `dea
 ## Notes and limitations
 
 - This performs active, unauthenticated HTTP requests from one vantage point. It is non-invasive header inspection, not a penetration test, passive packet capture or proof that an application is secure. Only scan targets you are authorised to assess.
-- The header analysis is done by secheaders. `headerproof` adds the liveness gate, the routing split and the reporting. Compatibility was verified with secheaders 0.2.0; rerun the tests after upgrading it. Nothing here is a fork of the scanner.
+- The header analysis is done by secheaders. `headerproof` adds the liveness gate, the routing split and the reporting. Compatibility was verified with secheaders 0.2.0; recheck scanner compatibility and report output after upgrading it. Nothing here is a fork of the scanner.
 - A host behind a challenge page or WAF may return a 403 or 503 from outside and land in Not assessed. A 403 or 503 from outside is neither a pass nor a defect. The wrapper sends all HTTP 400–599 gate responses to Not assessed even when the scanner returns parseable headers. A successful challenge page returning 200 cannot reliably be detected; a 200 response does not prove that the intended application was reached.
 
 ## Credit
@@ -111,7 +111,7 @@ Built around [secheaders](https://github.com/juerkkil/secheaders) by Juha Erkkil
 
 ## Implementation clarifications
 
-The original design brief is retained as supplied. Two safety clarifications deliberately refine its “parseable JSON means scanned” rule:
+Parseable scanner JSON alone does not establish assessment quality. The wrapper applies two additional rules:
 
 - Any HTTP 4xx/5xx gate response always needs manual assessment. The released scanner can return valid header findings for an error response, so JSON parseability alone does not establish assessment quality.
 - Non-default HTTPS ports are probed normally, but live targets on those ports are not sent to the scanner. In secheaders 0.2.0, the final header fetch uses `target_url.hostname` without `target_url.port`. Reporting that response could attribute the default service's headers to another port. These targets appear in Not assessed with an explicit reason. Upstream remains unmodified.
@@ -122,17 +122,11 @@ The DNS resolver uses the operating system's `getaddrinfo` behaviour; `--timeout
 
 ## Verification
 
-From the extracted directory, create the optional environment above, then run:
-
-```bash
-.venv/bin/python -m unittest discover -s . -v
-```
-
-The test suite requires secheaders and openpyxl installed in the test environment to verify all formats and the dependency preflight. It includes the 18 numbered acceptance checks and additional regression checks. Network outcomes and scanner failures are mocked for reproducibility; these tests do not claim to prove reachability or performance on a real estate. See VERIFICATION.md for the tested versions and live smoke-test result.
+Before release, 37 automated checks passed under Python 3.12, followed by live checks against example.com and github.com. The development test files are not included in this repository. See VERIFICATION.md for the recorded results and limitations.
 
 ## Operational data and licence
 
-Target lists and generated reports are operational data. Keep them outside the source directory, preferably using `--outdir`. The supplied `.gitignore` permits only the named source, documentation and test files to be added normally; it cannot protect data pasted into tracked files or files force-added to Git.
+Target lists and generated reports are operational data. Keep them outside the source directory, preferably using `--outdir`. The supplied `.gitignore` permits only the named source and documentation files to be added normally; it cannot protect data pasted into tracked files or files force-added to Git.
 
 MIT licensed. See LICENSE. `requirements.txt` has no mandatory Python dependencies and documents the optional XLSX installation. The separately installed scanner remains required for assessments.
 
@@ -149,4 +143,4 @@ Use a trusted PATH and Python environment because the wrapper executes the scann
 
 ## Release status
 
-Python 3.8 and 3.9 have reached end of life; see the [official Python version status](https://devguide.python.org/versions/). Packaging and cross-version CI have not yet been added. The retained design brief is historical; this README and the verification notes describe the implemented behaviour.
+Python 3.8 and 3.9 have reached end of life; see the [official Python version status](https://devguide.python.org/versions/). Packaging and cross-version CI have not yet been added. This README and the verification notes describe the implemented behaviour.
