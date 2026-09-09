@@ -1,6 +1,6 @@
 # headerproof
 
-HTTPS liveness checks and security-header reporting.
+A wrapper around secheaders for bulk domain scanning that groups results by domain status and adds TXT, CSV, HTML, JSON and XLSX reports.
 
 `headerproof` wraps the [secheaders](https://github.com/juerkkil/secheaders) scanner. It takes a list of targets, checks each one is actually live before scanning it, runs the header scan only against the live hosts, and writes the results in txt, csv, html, json or xlsx.
 
