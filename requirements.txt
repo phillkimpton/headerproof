@@ -1,0 +1,4 @@
+# No mandatory in-process third-party packages.
+# Install secheaders separately, for example: pipx install secheaders
+# Optional XLSX support, in the interpreter running headerproof:
+# python3 -m pip install openpyxl
