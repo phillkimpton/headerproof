@@ -39,6 +39,8 @@ import unicodedata
 from urllib.parse import urlsplit
 
 DEFAULT_TIMEOUT = 10
+# Response headers captured at the liveness gate purely as manual-assessment evidence.
+GATE_EVIDENCE_HEADERS = ("server", "cf-mitigated", "cf-ray")
 # Columns rendered in the csv/html matrix, in report order. (lowercase header name, short label)
 MATRIX = (
     ("content-security-policy", "CSP"),
@@ -100,12 +102,16 @@ def bare_host(target):
 
 
 def check_live(target, timeout=DEFAULT_TIMEOUT):
-    """Return (verdict, dns, http_code). An HTTP response proves liveness only."""
+    """Return (verdict, dns, http_code, evidence). An HTTP response proves liveness only.
+
+    `evidence` holds a few gate response headers (server, cf-mitigated, cf-ray)
+    kept only to explain why a WAF-gated host needs manual assessment.
+    """
     hostname, port = target_parts(target)
     try:
         socket.getaddrinfo(hostname, port)
     except socket.gaierror:
-        return ("dead", "NODNS", "000")
+        return ("dead", "NODNS", "000", {})
     conn = None
     try:
         ctx = ssl.create_default_context()
@@ -113,9 +119,11 @@ def check_live(target, timeout=DEFAULT_TIMEOUT):
         ctx.verify_mode = ssl.CERT_NONE
         conn = http.client.HTTPSConnection(hostname, port, timeout=timeout, context=ctx)
         conn.request("HEAD", "/")
-        return ("live", "resolves", str(conn.getresponse().status))
+        resp = conn.getresponse()
+        evidence = {h: resp.getheader(h) for h in GATE_EVIDENCE_HEADERS if resp.getheader(h)}
+        return ("live", "resolves", str(resp.status), evidence)
     except (OSError, http.client.HTTPException):
-        return ("dead", "resolves", "000")
+        return ("dead", "resolves", "000", {})
     finally:
         if conn is not None:
             conn.close()
@@ -277,6 +285,9 @@ def render_txt(records, dead, path, generated=None):
         lines.append(r.get("target", ""))
         if r["_scanerror"]:
             lines.append("  SCAN ERROR: %s" % r.get("error", ""))
+            ev = r.get("_meta", {}).get("evidence") or {}
+            if ev:
+                lines.append("  gate evidence: %s" % ", ".join("%s: %s" % (k, v) for k, v in ev.items()))
             lines.append("")
             continue
         for hdr, lbl in MATRIX:
@@ -558,8 +569,8 @@ def main(argv=None):
         fut = {ex.submit(check_live, t, args.timeout): t for t in targets}
         for f in cf.as_completed(fut):
             t = fut[f]
-            verdict, dns, code = f.result()
-            live_meta[t] = {"dns": dns, "http_code": code, "verdict": verdict}
+            verdict, dns, code, evidence = f.result()
+            live_meta[t] = {"dns": dns, "http_code": code, "verdict": verdict, "evidence": evidence}
             if verdict == "live":
                 live_targets.append(t)
             else:
