@@ -277,35 +277,73 @@ def render_csv(records, dead, path, generated=None):
 
 
 def render_txt(records, dead, path, generated=None):
+    W = 64
+    TAG = {"OK": "[ OK ]", "WARN": "[WARN]", "MISSING": "[MISS]"}
+
+    def host_of(rec):
+        t = rec.get("target", "") or rec.get("_input_target", "")
+        return t.split("://", 1)[1] if "://" in t else t
+
+    def yn(v, t="yes", f="no"):
+        return t if v is True else (f if v is False else "?")
+
+    assessed = [r for r in records if not r["_scanerror"]]
+    gated = [r for r in records if r["_scanerror"]]
+
     lines = []
-    lines.append("Security header report  (live hosts only; dead listed at end)")
-    lines.append("generated %s UTC" % (generated or datetime.datetime.now(datetime.timezone.utc)).strftime("%d %b %Y %H:%M"))
-    lines.append("=" * 64)
-    for r in records:
-        lines.append(r.get("target", ""))
-        if r["_scanerror"]:
-            lines.append("  SCAN ERROR: %s" % r.get("error", ""))
-            ev = r.get("_meta", {}).get("evidence") or {}
-            if ev:
-                lines.append("  gate evidence: %s" % ", ".join("%s: %s" % (k, v) for k, v in ev.items()))
-            lines.append("")
-            continue
-        for hdr, lbl in MATRIX:
-            st = status_of(r, hdr)
-            c = r.get("headers", {}).get(hdr, {}).get("contents", "") if st != "MISSING" else ""
-            lines.append("  [%-7s] %-26s %s" % (st, hdr, ("= " + c) if c else ""))
-        hp = r.get("https", {})
-        lines.append("  https supported=%s certvalid=%s redirect=%s http=%s problems=%d"
-                     % (hp.get("supported"), hp.get("certvalid"), hp.get("redirect"),
-                        r["_meta"].get("http_code", "?"), r["_problems"]))
+    lines.append("=" * W)
+    lines.append("  HEADERPROOF   security header report")
+    lines.append("  generated %s UTC" % (generated or datetime.datetime.now(datetime.timezone.utc)).strftime("%d %b %Y %H:%M"))
+    lines.append("  %d assessed    %d not-assessed    %d dead" % (len(assessed), len(gated), len(dead)))
+    lines.append("=" * W)
+
+    if gated:
         lines.append("")
+        lines.append("NOT ASSESSED   gate error, manual review needed")
+        lines.append("-" * W)
+        for r in gated:
+            ev = r.get("_meta", {}).get("evidence") or {}
+            lines.append("  " + host_of(r))
+            lines.append("    reason   %s" % r.get("error", "scan error"))
+            bits = []
+            if ev.get("server"):
+                bits.append(ev["server"])
+            if ev.get("cf-mitigated"):
+                bits.append("cf-mitigated: %s" % ev["cf-mitigated"])
+            if bits:
+                lines.append("    gate     %s" % "  ".join(bits))
+            if ev.get("cf-ray"):
+                lines.append("    cf-ray   %s" % ev["cf-ray"])
+            lines.append("")
+
+    if assessed:
+        lines.append("")
+        lines.append("ASSESSED")
+        lines.append("-" * W)
+        for r in assessed:
+            n = r["_problems"]
+            summary = "clean" if n == 0 else ("1 issue" if n == 1 else "%d issues" % n)
+            lines.append("  %-48s %s" % (host_of(r), summary))
+            for hdr, _ in MATRIX:
+                st = status_of(r, hdr)
+                c = r.get("headers", {}).get(hdr, {}).get("contents", "") if st != "MISSING" else ""
+                lines.append("    %s  %-27s %s" % (TAG.get(st, "[ ?  ]"), hdr, c))
+            hp = r.get("https", {})
+            lines.append("    https: supported=%s  cert=%s  redirect=%s  http=%s"
+                         % (yn(hp.get("supported")), yn(hp.get("certvalid"), "valid", "invalid"),
+                            yn(hp.get("redirect")), r["_meta"].get("http_code", "?")))
+            lines.append("")
+
     if dead:
-        lines.append("-" * 64)
-        lines.append("DEAD / NOT SERVING (%d) - route to DNS hygiene, not header owners:" % len(dead))
+        lines.append("")
+        lines.append("DEAD / NOT SERVING   route to DNS hygiene, not header owners")
+        lines.append("-" * W)
         for d in dead:
-            lines.append("  %-45s %s %s" % (d["target"], d.get("dns", ""), d.get("http_code", "")))
+            lines.append("  %-45s %s %s" % (host_of(d), d.get("dns", ""), d.get("http_code", "")))
+        lines.append("")
+
     with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(display_text(line) for line in lines) + "\n")
+        f.write("\n".join(display_text(line).rstrip() for line in lines) + "\n")
 
 
 def render_html(records, dead, path, generated=None):
