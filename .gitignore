@@ -1,7 +1,10 @@
 *
 !headerproof.py
+!test_headerproof.py
+!test_security.py
 !README.md
 !LICENSE
 !requirements.txt
 !VERIFICATION.md
+!example-report.png
 !.gitignore

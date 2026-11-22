@@ -10,6 +10,12 @@ The point of the tool is the liveness gate. On a real estate a target list is fu
 - **Live but not assessed** (a host that answered with any HTTP 4xx/5xx status, a non-default HTTPS port, or output the scanner could not parse) is flagged separately, never counted as a finding and never counted as clean.
 - **Dead** (no DNS answer, or resolves but does not answer over HTTPS) goes to DNS hygiene, not to header owners.
 
+## Example report
+
+The HTML report is a sortable, colour-coded matrix. Live hosts are shown worst-first, hosts that answered but could not be assessed are flagged as scan errors, and dead hosts are routed to a separate table below.
+
+![Example headerproof HTML report showing live hosts colour-coded by header status, scan errors, and a dead-host table](example-report.png)
+
 ## Requirements
 
 - Python 3.12 is the tested runtime. Use a currently supported Python release. The code retains Python 3.8-compatible syntax, but this is not a claim of runtime support or security maintenance for Python 3.8/3.9.
@@ -65,7 +71,7 @@ A few hosts straight on the command line:
 .venv/bin/python headerproof.py example.com github.com -o txt
 ```
 
-The target file is one host per line. Bare hostnames and full URLs both work. Blank lines and lines starting with `#` are ignored. Duplicates are removed by exact input text, preserving first-seen order. Positional targets precede file targets. Credentials in URLs, invalid ports and unsupported schemes are rejected before probing.
+The target file is one host per line. Bare hostnames and `https://` URLs both work. Blank lines and lines starting with `#` are ignored. Duplicates are removed by exact input text, preserving first-seen order. Positional targets precede file targets. Only `https://` URLs and bare hostnames are accepted; `http://` and other schemes, credentials in URLs, and invalid ports are rejected before probing.
 
 ## Options
 
@@ -96,13 +102,13 @@ All formats cover the six core response headers as a status of `OK`, `WARN` or `
 
 ## How liveness is decided
 
-For each target `headerproof` first resolves the hostname. No DNS answer is `dead` (`NODNS`). If it resolves, it opens an HTTPS connection and issues a `HEAD /`. Any HTTP status code counts as `live` (the host answered, and its status is recorded). A connection refusal, a timeout, or a TLS failure with no HTTP response is `dead`. Certificate validity is not part of the liveness decision, it is reported separately by secheaders for the hosts that scan.
+For each target `headerproof` first resolves the hostname. No DNS answer is `dead` (`NODNS`). If it resolves, it opens an HTTPS connection and issues a `HEAD /`. Any HTTP status code counts as `live` (the host answered, and its status is recorded). If the host rejects the HEAD method itself with 405 or 501, the gate re-probes once with GET, the method secheaders uses, so a HEAD-hostile but scannable host is not lost. A connection refusal, a timeout, or a TLS failure with no HTTP response is `dead`. Certificate validity is not part of the liveness decision, it is reported separately by secheaders for the hosts that scan.
 
 ## Notes and limitations
 
 - This performs active, unauthenticated HTTP requests from one vantage point. It is non-invasive header inspection, not a penetration test, passive packet capture or proof that an application is secure. Only scan targets you are authorised to assess.
 - The header analysis is done by secheaders. `headerproof` adds the liveness gate, the routing split and the reporting. Compatibility was verified with secheaders 0.2.0; recheck scanner compatibility and report output after upgrading it. Nothing here is a fork of the scanner.
-- A host behind a challenge page or WAF may return a 403 or 503 from outside and land in Not assessed. A 403 or 503 from outside is neither a pass nor a defect. The wrapper sends all HTTP 400–599 gate responses to Not assessed even when the scanner returns parseable headers. A successful challenge page returning 200 cannot reliably be detected; a 200 response does not prove that the intended application was reached.
+- A host behind a challenge page or WAF may return a 403 or 503 from outside and land in Not assessed. A 403 or 503 from outside is neither a pass nor a defect. The wrapper sends all HTTP 400–599 gate responses to Not assessed even when the scanner returns parseable headers, except that a 405 or 501 to the HEAD probe is re-tried with GET first, so a server that simply rejects the HEAD method is not mistaken for an unassessable host. A successful challenge page returning 200 cannot reliably be detected; a 200 response does not prove that the intended application was reached.
 
 ## Credit
 
@@ -122,7 +128,7 @@ The DNS resolver uses the operating system's `getaddrinfo` behaviour; `--timeout
 
 ## Verification
 
-Before release, 37 automated checks passed under Python 3.12, followed by live checks against example.com and github.com. The development test files are not included in this repository. See VERIFICATION.md for the recorded results and limitations.
+The bundled regression suite (`test_headerproof.py` and `test_security.py`, 40 checks) runs under Python 3.12 and passes without secheaders installed, so the result is reproducible on a clean machine with `python3 -m unittest discover`. Earlier development also ran live checks against example.com and github.com. See VERIFICATION.md for the recorded results and limitations.
 
 ## Operational data and licence
 
@@ -137,7 +143,7 @@ CLI reports are written through private temporary files and atomically replace t
 
 CSV text that could be interpreted as a formula is prefixed with an apostrophe. Do not strip that prefix or enable spreadsheet external content for untrusted data. Spreadsheet import behaviour varies, so use JSON for exact machine-readable values. Terminal, TXT, HTML and XLSX display text escapes control characters; JSON preserves the original scanner data. XLSX text is stored as text, not a formula.
 
-Exit status 0 means the requested reports were produced, except an optional XLSX skip. It does not mean all targets were assessed or that there were no header warnings. Invalid CLI input exits 2; missing dependencies or output/operational errors exit 1. Keyboard interruption exits 130 after active worker cleanup; an OS DNS call can delay that cleanup. Progress and diagnostics use stderr only.
+Exit status 0 means at least the requested reports were produced, except an optional XLSX skip alongside other formats. If no report is produced at all, for example an xlsx-only run with openpyxl absent, the run exits 1. Exit 0 does not mean all targets were assessed or that there were no header warnings. Invalid CLI input exits 2; missing dependencies or output/operational errors exit 1. Keyboard interruption exits 130 after active worker cleanup; an OS DNS call can delay that cleanup. Progress and diagnostics use stderr only.
 
 Use a trusted PATH and Python environment because the wrapper executes the scanner found there. This CLI is not a safe server-side URL-fetching service: caller-selected targets and scanner redirects can reach internal addresses. It applies no destination allowlist or network isolation.
 

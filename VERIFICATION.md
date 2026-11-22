@@ -36,7 +36,7 @@ The README explains these classification rules:
 
 ## Test availability
 
-The results above record checks performed during development. The design brief and development test files have been removed from this repository; the recorded checks are not a bundled test suite.
+The regression tests are bundled in this repository as `test_headerproof.py` and `test_security.py`. See the 22 November 2026 section below for their restored, reproducible state. The design brief remains removed.
 
 ## HTTP 4xx/5xx update
 
@@ -46,3 +46,15 @@ On 9 September 2026, the manual-assessment rule was extended from 403/503 to eve
 ## Pre-publication security update
 
 On 9 September 2026, a further security pass added 10 regression tests (37 total). The changes protect CSV cells against formula interpretation, escape unsafe display characters while retaining raw JSON, validate hostname lengths and HTTPS flag types, fail early when the scanner is missing, and write CLI reports atomically with private POSIX permissions. Expected CLI failures now have documented exit codes. The 37-test suite passed under Python 3.12, and a new example.com/github.com live run produced five reports successfully. This supersedes earlier test-count and missing-scanner behaviour notes above.
+
+
+## Test suite restored and gate refinements (22 November 2026)
+
+Verified on 22 November 2026 using the runtime UTC clock, under Python 3.12 with openpyxl installed and secheaders deliberately absent. The full suite passed with `python3 -m unittest discover`.
+
+- The development tests were restored from the initial-release commit. The end-to-end acceptance tests previously required the secheaders binary to be installed, because they did not stub the scanner-presence check, so the recorded "37 passed" was not reproducible on a clean machine. They now stub `require_scanner`, matching the unit-level tests, and the suite passes without secheaders installed. The scanner-presence behaviour itself is still covered on its own in `test_security`. The count is now 40 (37 restored plus three for the changes below).
+- Liveness gate: a 405 or 501 response to the HEAD probe is now re-tried once with GET, the method secheaders uses, so a host that rejects HEAD but serves GET is scanned rather than routed to Not assessed. Genuine access states (401/403/429/503) are unchanged and still route to Not assessed. Covered by `test_05a_head_rejected_falls_back_to_get` and `test_05b_genuine_error_status_is_not_reprobed`.
+- Scheme handling: the `http://` scheme is now rejected by `target_parts` rather than silently treated as HTTPS on port 443, aligning the code with the documented HTTPS-only behaviour. A port-80 case such as `http://host:80` previously passed the gate and was then refused as a non-default port; it is now rejected up front. Bare hostnames and `https://` URLs are unaffected. Covered in `test_security`.
+- Exit codes: a run that produces no report at all, for example xlsx-only with openpyxl absent, now exits 1 instead of reporting success. A partial XLSX skip alongside other written formats still exits 0. Covered by `test_02a_total_render_failure_raises`.
+
+Packaging and cross-version CI remain not added; this is still a run-the-script release.

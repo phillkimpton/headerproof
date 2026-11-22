@@ -73,10 +73,10 @@ def read_targets(path):
 def target_parts(target):
     """Parse an HTTP(S) target without confusing a bare host:port with a scheme."""
     parsed = urlsplit(target if "://" in target else "https://" + target)
-    if (parsed.scheme not in ("http", "https") or not parsed.hostname
+    if (parsed.scheme != "https" or not parsed.hostname
             or parsed.username is not None or parsed.password is not None
             or any(c.isspace() or ord(c) < 32 for c in target)):
-        raise ValueError("expected an HTTP(S) URL or hostname, without credentials")
+        raise ValueError("expected an HTTPS URL or hostname, without credentials")
     hostname = parsed.hostname
     try:
         ipaddress.ip_address(hostname)
@@ -120,6 +120,14 @@ def check_live(target, timeout=DEFAULT_TIMEOUT):
         conn = http.client.HTTPSConnection(hostname, port, timeout=timeout, context=ctx)
         conn.request("HEAD", "/")
         resp = conn.getresponse()
+        if resp.status in (405, 501):
+            # These reject the HEAD method itself, not the resource. secheaders scans
+            # with GET, so re-probe with GET rather than lose a scannable host to "not
+            # assessed". Genuine access states (401/403/429/503) are left to route there.
+            conn.close()
+            conn = http.client.HTTPSConnection(hostname, port, timeout=timeout, context=ctx)
+            conn.request("GET", "/")
+            resp = conn.getresponse()
         evidence = {h: resp.getheader(h) for h in GATE_EVIDENCE_HEADERS if resp.getheader(h)}
         return ("live", "resolves", str(resp.status), evidence)
     except (OSError, http.client.HTTPException):
@@ -656,6 +664,8 @@ def main(argv=None):
     log("  writing done: %d written, %d skipped" % (len(written), len(formats) - len(written)))
     for p in written:
         log("  " + p)
+    if not written:
+        raise RuntimeError("no reports written; all %d requested format(s) failed" % len(formats))
 
 
 def cli():
